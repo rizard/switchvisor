@@ -1,11 +1,13 @@
- package net.floodlightcontroller.switchvisor;
+package net.floodlightcontroller.switchvisor;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.TimeUnit;
+import java.util.Set;
 
 import org.jboss.netty.buffer.ChannelBuffer;
 import org.jboss.netty.buffer.ChannelBuffers;
@@ -28,8 +30,10 @@ import org.projectfloodlight.openflow.types.TransportPort;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.google.common.cache.Cache;
-import com.google.common.cache.CacheBuilder;
+import com.fasterxml.jackson.core.JsonParseException;
+import com.fasterxml.jackson.core.JsonParser;
+import com.fasterxml.jackson.core.JsonToken;
+import com.fasterxml.jackson.databind.MappingJsonFactory;
 
 import net.floodlightcontroller.core.FloodlightContext;
 import net.floodlightcontroller.core.IFloodlightProviderService;
@@ -53,17 +57,18 @@ import net.floodlightcontroller.restserver.IRestApiService;
 import net.floodlightcontroller.switchvisor.web.SwitchVisorRoutable;
 
 public class SwitchVisor implements IFloodlightModule, IOFMessageListener, ISwitchVisorService, IOFSwitchListener {
-
 	private static final Logger log = LoggerFactory.getLogger(SwitchVisor.class);
+
+	private static final String STR_CONFIG_INTERCEPTER_SWITCHES = "intercepter-switches";
+	private static final String STR_CONFIG_TESTING = "testing";
+
+	private static boolean testing = false;
 
 	private static IFloodlightProviderService floodlightProviderService;
 	private static IRestApiService restApiService;
 	private static IOFSwitchService switchService;
 
-	private static int maxOfConnectionsSupported = 1024;
-	private static int proxySessionTimeout = 60;
-
-	private static List<DatapathId> intercepterSwitches;
+	private static Set<DatapathId> intercepterSwitches;
 
 	/*
 	 * Keep track of the active proxies we should service.
@@ -128,30 +133,46 @@ public class SwitchVisor implements IFloodlightModule, IOFMessageListener, ISwit
 		restApiService = context.getServiceImpl(IRestApiService.class);
 		switchService = context.getServiceImpl(IOFSwitchService.class);
 
-		intercepterSwitches = new ArrayList<DatapathId>();
-		intercepterSwitches.add(DatapathId.of("00:00:00:00:00:00:00:11")); //TODO get from config/REST API
-
+		/* Init data structures */
+		intercepterSwitches = new HashSet<DatapathId>();
 		proxiesToService = new OrderedSet<ProxyInfo>();
 
+		/* Get config data from floodlightdefault.properties */
 		Map<String, String> config = context.getConfigParams(this);
-		if (config.get("session-timeout") != null && !config.get("session-timeout").isEmpty()) {
-			proxySessionTimeout = Integer.parseInt(config.get("session-timeout"));
+		if (config.get(STR_CONFIG_INTERCEPTER_SWITCHES) != null && !config.get(STR_CONFIG_INTERCEPTER_SWITCHES).isEmpty()) {
+			intercepterSwitches.addAll(parseIntercepterSwitches(config.get(STR_CONFIG_INTERCEPTER_SWITCHES)));
 		}
-		if (config.get("max-proxy-connections") != null && !config.get("max-proxy-connections").isEmpty()) {
-			proxySessionTimeout = Integer.parseInt(config.get("max-proxy-connections"));
+		if (config.get(STR_CONFIG_TESTING) != null && !config.get(STR_CONFIG_TESTING).isEmpty()) {
+			testing = Boolean.parseBoolean(config.get(STR_CONFIG_TESTING));
 		}
-		
-		OrderedSet<OFPort> physPorts = new OrderedSet<OFPort>();
-		physPorts.add(OFPort.of(1));
-		physPorts.add(OFPort.of(2));
-		physPorts.add(OFPort.of(3));
-		OrderedSet<OFPort> proxyPorts = new OrderedSet<OFPort>();
-		proxyPorts.add(OFPort.of(4));
-		proxyPorts.add(OFPort.of(5));
-		proxyPorts.add(OFPort.of(6));
-		
-		proxiesToService.add(ProxyInfo.of(DatapathId.of(1), physPorts, DatapathId.of(2), proxyPorts, IPv4Address.of("10.0.0.1"), TransportPort.of(6653)));
-		log.warn("Manually added ProxyInfo {} for testing.", proxiesToService.get(0));
+
+		/* Test config */
+		if (testing) {
+			OrderedSet<OFPort> physPorts = new OrderedSet<OFPort>();
+			physPorts.add(OFPort.of(1));
+			physPorts.add(OFPort.of(2));
+			physPorts.add(OFPort.of(3));
+			OrderedSet<OFPort> proxyPorts = new OrderedSet<OFPort>();
+			proxyPorts.add(OFPort.of(4));
+			proxyPorts.add(OFPort.of(5));
+			proxyPorts.add(OFPort.of(6));
+
+			proxiesToService.add(ProxyInfo.of(DatapathId.of(10), physPorts, DatapathId.of(11), proxyPorts, IPv4Address.of("10.0.0.1"), TransportPort.of(6653)));
+			log.warn("Manually added ProxyInfo for testing {}", proxiesToService.get(0).toString());
+			
+			physPorts = new OrderedSet<OFPort>();
+			physPorts.add(OFPort.of(7));
+			physPorts.add(OFPort.of(8));
+			physPorts.add(OFPort.of(9));
+			proxyPorts = new OrderedSet<OFPort>();
+			proxyPorts.add(OFPort.of(10));
+			proxyPorts.add(OFPort.of(11));
+			proxyPorts.add(OFPort.of(12));
+
+			/* Point to the same controller */
+			proxiesToService.add(ProxyInfo.of(DatapathId.of(12), physPorts, DatapathId.of(13), proxyPorts, IPv4Address.of("10.0.0.1"), TransportPort.of(6653)));
+			log.warn("Manually added ProxyInfo for testing {}", proxiesToService.get(1).toString());
+		}
 	}
 
 	@Override
@@ -268,7 +289,7 @@ public class SwitchVisor implements IFloodlightModule, IOFMessageListener, ISwit
 		pi.setPhysicalSwitchVersion(m.getVersion());
 		pi.setPhysicalSwitchDPID(m.getDatapathId());
 	}
-	
+
 	/**
 	 * Based on a valid ProxyInfo object, take the source and destination L3 and L4
 	 * header information of a packet and lookup the direction of the packet, either
@@ -438,7 +459,7 @@ public class SwitchVisor implements IFloodlightModule, IOFMessageListener, ISwit
 					break;
 				}
 			}
-			
+
 			if (al.isEmpty()) {
 				log.warn("Could not find a destination device attachment point. (Possible SwitchVisor bug?) Flooding packet-out on switch {}", sw.getId().toString());
 				al.add(sw.getOFFactory().actions().output(OFPort.FLOOD, 0xFFffFFff));
@@ -459,6 +480,50 @@ public class SwitchVisor implements IFloodlightModule, IOFMessageListener, ISwit
 				.setXid(sw.getOFFactory().nextXid())
 				.build();
 		sw.write(po);
+	}
+
+	private static Set<DatapathId> parseIntercepterSwitches(String json) {
+		MappingJsonFactory f = new MappingJsonFactory();
+		JsonParser jp;
+		Set<DatapathId> retValue = new HashSet<DatapathId>();
+
+		if (json == null || json.isEmpty()) {
+			return retValue;
+		}
+
+		try {
+			try {
+				jp = f.createParser(json);
+			} catch (JsonParseException e) {
+				throw new IOException(e);
+			}
+
+			if (jp.nextToken() != JsonToken.START_ARRAY) {
+				throw new IOException("Expected START_ARRAY");
+			}
+
+			while (jp.nextToken() != JsonToken.END_ARRAY) {
+				if (jp.getCurrentToken() == JsonToken.VALUE_STRING) {
+					String v = jp.getValueAsString().trim();
+					if (v.isEmpty()) {
+						continue;
+					}
+
+					try {
+						DatapathId d = DatapathId.of(v);
+						retValue.add(d);
+						log.debug("Adding intercepter switch DPID {}", d);
+					} catch (NumberFormatException e) {
+						log.error("Ignorning invalid DPID {} for intercepter switch", v);
+					}
+				} else {
+					throw new IOException("Expected VALUE_STRING");
+				}
+			}
+		} catch (IOException e) {
+			log.error("JSON formatting error in intercepter switch DPID input String: {}", e);
+		}
+		return retValue;
 	}
 
 	/*

@@ -18,6 +18,6 @@
   <logger name="net.floodlightcontroller.packet" level="INFO"></logger>
   <logger name="net.floodlightcontroller.forwarding" level="INFO"></logger>
   <logger name="net.floodlightcontroller.core.internal" level="INFO"></logger>
-  <logger level="INFO" name="net.floodlightcontroller.learningswitch"></logger>
+  <logger level="DEBUG" name="net.floodlightcontroller.switchvisor"></logger>
   <logger level="INFO" name="org.projectfloodlight.openflow"></logger>
 </configuration>

@@ -97,7 +97,7 @@ public class SwitchVisorAddProxyResource extends ServerResource {
 									? Integer.parseInt(value.replaceFirst("0x", ""), 16) 
 											: Integer.parseInt(value)
 									); /* will throw exception if outside valid TableId number range */
-							retValue.put(dpid, tablesToGetDefaultFlow);
+							//retValue.put(dpid, tablesToGetDefaultFlow);
 							log.info("Setting max tables to receive table-miss flow to {} for DPID {}", 
 									tablesToGetDefaultFlow.toString(), dpid.toString());
 						} catch (IllegalArgumentException e) { /* catches both IllegalArgumentExcpt. and NumberFormatExcpt. */

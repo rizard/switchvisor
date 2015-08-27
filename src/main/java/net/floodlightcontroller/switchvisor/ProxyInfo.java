@@ -364,4 +364,13 @@ public class ProxyInfo {
 			return false;
 		return true;
 	}
+
+	@Override
+	public String toString() {
+		return "ProxyInfo [physicalDpid=" + physicalDpid + ", physicalVersion="
+				+ physicalVersion + ", proxyDpid=" + proxyDpid
+				+ ", proxyVersion=" + proxyVersion + ", portMap=" + portMap
+				+ ", controllerIp=" + controllerIp + ", controllerPort="
+				+ controllerPort + "]";
+	}
 }
