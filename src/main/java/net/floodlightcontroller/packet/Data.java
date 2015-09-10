@@ -24,7 +24,7 @@ import java.util.Arrays;
  * @author David Erickson (daviderickson@cs.stanford.edu)
  */
 public class Data extends BasePacket {
-    protected byte[] data;
+	protected byte[] data;
 
     /**
      * 
@@ -91,4 +91,10 @@ public class Data extends BasePacket {
             return false;
         return true;
     }
+    
+    @Override
+	public String toString() {
+		return "Data [data=" + Arrays.toString(data) + "]";
+	}
+
 }

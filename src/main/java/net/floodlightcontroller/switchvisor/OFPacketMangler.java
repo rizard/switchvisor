@@ -2132,6 +2132,7 @@ public class OFPacketMangler {
 		case PROXY_TO_PHYS:
 			OFFactory f = OFFactories.getFactory(pi.getPhysicalSwitchVersion());
 			OFFlowMod.Builder b;
+			log.info("Flow mod before: {}", m);
 			switch (m.getCommand()) {
 			case ADD:
 				b = f.buildFlowAdd();
@@ -2158,7 +2159,7 @@ public class OFPacketMangler {
 			.setHardTimeout(m.getHardTimeout())
 			.setPriority(m.getPriority())
 			.setBufferId(m.getBufferId())
-			.setOutPort(m.getOutPort())
+			.setOutPort(pi.getPhysicalPortFromProxy(m.getOutPort()))
 			.setFlags(m.getFlags())
 			.setXid(m.getXid());
 
@@ -2181,7 +2182,7 @@ public class OFPacketMangler {
 				log.error("Unsupported OpenFlow version received from {} for OFMessage {}", pd, m);
 				break;
 			}
-
+			log.info("Flow mod after: {}", m);
 			break;
 		}
 		return m;

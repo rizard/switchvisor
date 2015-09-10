@@ -95,7 +95,7 @@ public class SwitchVisor implements IFloodlightModule, IOFMessageListener, ISwit
 	@Override
 	public boolean isCallbackOrderingPostreq(OFType type, String name) {
 		if (type.equals(OFType.PACKET_IN) && (name.equals("forwarding") || name.equals("hub"))) {
-			log.debug("Telling Forwarding/Hub to run before us.");
+			log.debug("Telling Forwarding/Hub to run after us.");
 			return true;
 		} else {
 			return false;
@@ -151,13 +151,13 @@ public class SwitchVisor implements IFloodlightModule, IOFMessageListener, ISwit
 			OrderedSet<OFPort> physPorts = new OrderedSet<OFPort>();
 			physPorts.add(OFPort.of(1));
 			physPorts.add(OFPort.of(2));
-			physPorts.add(OFPort.of(3));
+			physPorts.add(OFPort.LOCAL);
 			OrderedSet<OFPort> proxyPorts = new OrderedSet<OFPort>();
-			proxyPorts.add(OFPort.of(4));
-			proxyPorts.add(OFPort.of(5));
-			proxyPorts.add(OFPort.of(6));
+			proxyPorts.add(OFPort.of(11));
+			proxyPorts.add(OFPort.of(12));
+			proxyPorts.add(OFPort.of(13));
 
-			proxiesToService.add(ProxyInfo.of(DatapathId.of(10), physPorts, DatapathId.of(11), proxyPorts, IPv4Address.of("10.0.0.1"), TransportPort.of(6653)));
+			proxiesToService.add(ProxyInfo.of(DatapathId.of("00:00:00:00:00:00:8b:ad"), physPorts, DatapathId.of("00:00:00:00:00:00:f0:0d"), proxyPorts, IPv4Address.of("20.0.0.2"), TransportPort.of(6653)));
 			log.warn("Manually added ProxyInfo for testing {}", proxiesToService.get(0).toString());
 			
 			physPorts = new OrderedSet<OFPort>();
@@ -217,6 +217,7 @@ public class SwitchVisor implements IFloodlightModule, IOFMessageListener, ISwit
 				PacketDirection pd;
 				try {
 					pd = getPacketDirection(pi, l3.getSourceAddress(), l4.getSourcePort(), l3.getDestinationAddress(), l4.getDestinationPort());
+					log.debug("Got packet direction of {}", pd);
 				} catch (Exception e) {
 					log.error("Error looking up packet direction. Report SwitchVisor bug.");
 					log.error("Error message: {}", e.getMessage());
@@ -245,7 +246,7 @@ public class SwitchVisor implements IFloodlightModule, IOFMessageListener, ISwit
 						/* First, process features reply, if present */
 						if (m.getType().equals(OFType.FEATURES_REPLY)) {
 							processFeaturesReply((OFFeaturesReply) m, pi);
-							log.debug("Learned physical DPID and version in ProxyInfo {}", pi.toString());
+							log.warn("Learned physical DPID and version in ProxyInfo {}", pi.toString());
 						}
 						/* Then, mangle packets (note includes features reply) */
 						mangledOfMsgs.add(OFPacketMangler.mangle(m, pi, pd));
@@ -256,7 +257,10 @@ public class SwitchVisor implements IFloodlightModule, IOFMessageListener, ISwit
 					 * back into the TCP packet's payload once again. Use of lists
 					 * guarantees order is correct.
 					 */
-					l7.setData(writeOpenFlowMessages(mangledOfMsgs));
+					log.trace("TCP packet before: {}", l4.toString());
+					l4.setChecksum((short) 0); /* reset */
+					l4.setPayload(l7.setData(writeOpenFlowMessages(mangledOfMsgs)));
+					log.trace("TCP packet after: {}", l4.toString());
 					/*
 					 * All layer payload references still set, so just serialize.
 					 * New data set in application layer above will be incorporated.
@@ -286,6 +290,7 @@ public class SwitchVisor implements IFloodlightModule, IOFMessageListener, ISwit
 	 * @param pi
 	 */
 	private static void processFeaturesReply(OFFeaturesReply m, ProxyInfo pi) {
+		pi.setProxySwitchVersion(m.getVersion());
 		pi.setPhysicalSwitchVersion(m.getVersion());
 		pi.setPhysicalSwitchDPID(m.getDatapathId());
 	}
@@ -414,8 +419,13 @@ public class SwitchVisor implements IFloodlightModule, IOFMessageListener, ISwit
 		ChannelBuffer cb = ChannelBuffers.dynamicBuffer();
 		for (OFMessage ofMsg : msgs) {
 			ofMsg.writeTo(cb);
+			log.trace("Writing message {} to buffer", ofMsg);
 		}
-		return cb.array();
+		log.trace("Written OF message in byte form ({}) {}", cb.writerIndex(), cb.array());
+		byte[] shrunk = new byte[cb.writerIndex()];
+		cb.readBytes(shrunk, 0, cb.writerIndex());
+		log.trace("Shrunken OF message in byte form {}", shrunk);
+		return shrunk;
 	}
 
 	/**
@@ -454,7 +464,7 @@ public class SwitchVisor implements IFloodlightModule, IOFMessageListener, ISwit
 			}
 			for (SwitchPort sp : dstDevice.getAttachmentPoints()) {
 				if (sp.getSwitchDPID().equals(sw.getId())) {
-					log.debug("Determined output SwitchPort to be {}", sp.toString());
+					log.debug("Determined output SwitchPort to be {} for device {}", sp.toString(), dstDevice);
 					al.add(sw.getOFFactory().actions().output(sp.getPort(), 0xFFffFFff));
 					break;
 				}
@@ -476,7 +486,7 @@ public class SwitchVisor implements IFloodlightModule, IOFMessageListener, ISwit
 				.setActions(al)
 				.setBufferId(OFBufferId.NO_BUFFER)
 				.setData(eth.serialize())
-				.setInPort(OFPort.CONTROLLER)
+				.setInPort(OFPort.LOCAL)
 				.setXid(sw.getOFFactory().nextXid())
 				.build();
 		sw.write(po);

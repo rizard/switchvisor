@@ -412,4 +412,14 @@ public class TCP extends BasePacket {
         this.payload.setParent(this);
         return this;
     }
+
+	@Override
+	public String toString() {
+		return "TCP [sourcePort=" + sourcePort + ", destinationPort="
+				+ destinationPort + ", sequence=" + sequence + ", acknowledge="
+				+ acknowledge + ", dataOffset=" + dataOffset + ", flags="
+				+ flags + ", windowSize=" + windowSize + ", checksum="
+				+ checksum + ", urgentPointer=" + urgentPointer + ", options="
+				+ Arrays.toString(options) + ", payload=" + super.payload.toString() + "]";
+	}
 }

@@ -269,6 +269,10 @@ public class ProxyInfo {
 	public synchronized void setPhysicalSwitchVersion(OFVersion v) {
 		this.physicalVersion = v;
 	}
+	
+	public synchronized void setProxySwitchVersion(OFVersion v) {
+		this.proxyVersion = v;
+	}
 
 	public OFVersion getPhysicalSwitchVersion() {
 		if (this.physicalVersion == null) {
